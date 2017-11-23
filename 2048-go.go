@@ -10,11 +10,18 @@ import (
 )
 
 
-type BoardState int
+type BoardState uint
 const (
     INIT_STATE BoardState = iota
     UNDO_OK
     REDO_OK
+)
+
+type PlayerState uint
+const (
+    INIT_STATE PlayerState = iota
+    PLAYER_WIN
+    PLAYER_LOSE
 )
 
 type GameBoard struct {
@@ -24,6 +31,7 @@ type GameBoard struct {
     score int
     prevScore int
     bstate BoardState
+    pstate PlayerState
 }
 
 func genSquareSlice(size, inival int) [][]int {
@@ -36,8 +44,6 @@ func genSquareSlice(size, inival int) [][]int {
     }
     return s
 }
-
-
 
 func GetTileColor(v int) [2]termbox.Attribute {
     var color [2]termbox.Attribute
@@ -98,6 +104,7 @@ func NewGameBoard(size int) *GameBoard {
     }
     g.bstate = INIT_STATE
     g.score = 0
+    g.pstate = INIT_STATE
     return g
 }
 
@@ -147,6 +154,23 @@ func PrintUsage(offset int) int {
         termbox.SetCell(i, offset, r, termbox.ColorDefault, termbox.ColorDefault)
     }
     return 1
+}
+
+func (g *GameBoard) CheckGameEnd() {
+    for _, row := range g.board {
+        for _, v := range row {
+            if v == 2048 {
+                g.pstate = PLAYER_WIN
+                return true
+            }
+        }
+    }
+    if g.IsSlidable() {
+        return false
+    } else {
+        g.pstate = PLAYER_LOSE
+        return true
+    }
 }
 
 func (g *GameBoard) Draw() {
@@ -314,6 +338,14 @@ func (g *GameBoard) SlideLeft() bool {
     return ret
 }
 
+func (g *GameBoard) Win() {
+
+}
+
+func (g *GameBoard) Lose() {
+
+}
+
 func handleKeyEvent(ev termbox.Event) bool {
     switch ev.Type {
     case termbox.EventKey:
@@ -353,6 +385,9 @@ func handleKeyEvent(ev termbox.Event) bool {
         default:
             g.Draw()
         }
+        if g.CheckGameEnd() {
+            return false
+        }
     default:
         g.Draw()
     }
@@ -380,15 +415,21 @@ func main() {
     }()
 
     g.Draw()
+GAME_MAINLOOP:
     for {
         select {
         case ev := <-evc:
             if !handleKeyEvent(ev) {
-                return
+                break GAME_MAINLOOP
             }
             g.Draw()
         case <-time.After(1*time.Second):
             g.Draw()
         }
+    }
+    if g.pstate == WIN {
+        g.Win()
+    } else {
+        g.Lose()
     }
 }
