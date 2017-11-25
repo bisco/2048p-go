@@ -12,16 +12,16 @@ import (
 
 type BoardState uint
 const (
-    INIT_STATE BoardState = iota
+    BOARD_INIT_STATE BoardState = iota
     UNDO_OK
     REDO_OK
 )
 
 type PlayerState uint
 const (
-    INIT_STATE PlayerState = iota
-    PLAYER_WIN
-    PLAYER_LOSE
+    PLAYER_DEFAULT_STATE PlayerState = iota
+    WIN
+    LOSE
 )
 
 type GameBoard struct {
@@ -29,7 +29,8 @@ type GameBoard struct {
     prevBoard [][]int
     size int
     score int
-    prevScore int
+    prevscore int
+    highscore int
     bstate BoardState
     pstate PlayerState
 }
@@ -102,9 +103,9 @@ func NewGameBoard(size int) *GameBoard {
         g.board[x1][y1] = 2
         g.board[x2][y2] = 2
     }
-    g.bstate = INIT_STATE
+    g.bstate = BOARD_INIT_STATE
+    g.pstate = PLAYER_DEFAULT_STATE
     g.score = 0
-    g.pstate = INIT_STATE
     return g
 }
 
@@ -137,41 +138,45 @@ func (g *GameBoard) PrintBoard(offset int) int {
         drawline(y+2)
         lineCount += 2
     }
+    if g.pstate == WIN {
+        g.Win()
+    } else if g.pstate == LOSE {
+        g.Lose()
+    }
     return lineCount
 }
 
-func (g *GameBoard) PrintScore(offset int) int {
-    str := fmt.Sprintf("Score: %d", g.score)
+func drawLine(str string, yoff int) {
     for i, r := range []rune(str) {
-        termbox.SetCell(i, offset, r, termbox.ColorDefault, termbox.ColorDefault)
+        termbox.SetCell(i, yoff, r, termbox.ColorDefault, termbox.ColorDefault)
     }
+}
+
+func drawLineColor(str string, yoff int, fg, bg termbox.Attribute) {
+    for i, r := range []rune(str) {
+        termbox.SetCell(i, yoff, r, fg, bg)
+    }
+}
+
+func (g *GameBoard) PrintScore(offset int) int {
+    str := fmt.Sprintf("Score: %d / High Score: %d", g.score, g.highscore)
+    drawLine(str, offset)
     return 1
 }
 
 func PrintUsage(offset int) int {
-    usage := "ESC: Exit the game  PgDn: Undo  PgUp: Redo"
-    for i, r := range []rune(fmt.Sprintf(usage)) {
-        termbox.SetCell(i, offset, r, termbox.ColorDefault, termbox.ColorDefault)
+    usage := []string{
+                "Slide tiles with arrow keys. If the two tiles are the same, ",
+                "they merge into one and its number becomes double.",
+                "GOAL: generate a '2048' tile.",
+                "ESC: Exit the game / SPACE: Reset the game / PgDn: Undo / PgUp: Redo",
     }
-    return 1
+    for i, v := range usage {
+        drawLine(v, offset+i)
+    }
+    return len(usage)
 }
 
-func (g *GameBoard) CheckGameEnd() {
-    for _, row := range g.board {
-        for _, v := range row {
-            if v == 2048 {
-                g.pstate = PLAYER_WIN
-                return true
-            }
-        }
-    }
-    if g.IsSlidable() {
-        return false
-    } else {
-        g.pstate = PLAYER_LOSE
-        return true
-    }
-}
 
 func (g *GameBoard) Draw() {
     termbox.Clear(termbox.ColorDefault, termbox.ColorDefault)
@@ -190,7 +195,7 @@ func (g *GameBoard) KeepPrevBoard() {
             g.prevBoard[i][j] = v
         }
     }
-    g.prevScore = g.score
+    g.prevscore = g.score
 }
 
 func (g *GameBoard) swapBoard() {
@@ -246,7 +251,13 @@ func (g *GameBoard) Redo() {
 func (g *GameBoard) mergeTile(dsty, dstx, srcy, srcx int) {
     g.board[srcy][srcx] = -1
     g.board[dsty][dstx] *= 2
+    if g.board[dsty][dstx] == 2048 {
+        g.pstate = WIN
+    }
     g.score += g.board[dsty][dstx]
+    if g.score > g.highscore {
+        g.highscore = g.score
+    }
 }
 
 func (g *GameBoard) canSlideRight(y, x, limit int) bool {
@@ -276,7 +287,7 @@ func (g *GameBoard) _slideRight(y, x, limit int) int {
             if !(i == 1 && x == 0) {
                 g.board[y][x] = -1
             }
-            return i - 1
+            return i
         }
     }
     g.board[y][limit - 1] = g.board[y][x]
@@ -317,6 +328,66 @@ func (g *GameBoard) PopNewTile(){
     }
 }
 
+func (g *GameBoard) canSlideRightAll() bool {
+    for i := 0; i < g.size; i++ {
+        for j := 0; j < g.size; j++ {
+            if g.canSlideRight(i, j, g.size) {
+                return true
+            }
+        }
+    }
+    return false
+}
+
+func (g *GameBoard) canSlideUpAll() bool {
+    g.rrot90()
+    for i := 0; i < g.size; i++ {
+        for j := 0; j < g.size; j++ {
+            if g.canSlideRight(i, j, g.size) {
+                g.lrot90()
+                return true
+            }
+        }
+    }
+    g.lrot90()
+    return false
+}
+
+func (g *GameBoard) canSlideDownAll() bool {
+    g.lrot90()
+    for i := 0; i < g.size; i++ {
+        for j := 0; j < g.size; j++ {
+            if g.canSlideRight(i, j, g.size) {
+                g.rrot90()
+                return true
+            }
+        }
+    }
+    g.rrot90()
+    return false
+}
+
+func (g *GameBoard) canSlideLeftAll() bool {
+    g.mirrorLR()
+    for i := 0; i < g.size; i++ {
+        for j := 0; j < g.size; j++ {
+            if g.canSlideRight(i, j, g.size) {
+                return true
+            }
+        }
+    }
+    g.mirrorLR()
+    return false
+}
+
+func (g *GameBoard) IsSlidable() bool {
+    ret := g.canSlideRightAll()
+    ret = ret || g.canSlideLeftAll()
+    ret = ret || g.canSlideUpAll()
+    ret = ret || g.canSlideDownAll()
+    return ret
+}
+
 func (g *GameBoard) SlideUp() bool {
     g.rrot90()
     ret := g.SlideRight()
@@ -338,12 +409,31 @@ func (g *GameBoard) SlideLeft() bool {
     return ret
 }
 
-func (g *GameBoard) Win() {
+func (g *GameBoard) CheckGameEnd() bool {
+     if g.pstate == WIN {
+        return true
+     }
+     if g.IsSlidable() {
+        return true
+     }
+     g.pstate = LOSE
+     return false
+}
 
+func (g *GameBoard) Win() {
+    if g.highscore < g.score {
+        g.highscore = g.score
+    }
+    msg := "****** YOU WIN ******"
+    drawLineColor(msg, 5, 4, 240)
 }
 
 func (g *GameBoard) Lose() {
-
+    if g.highscore < g.score {
+        g.highscore = g.score
+    }
+    msg := "***** YOU LOSE  *****"
+    drawLineColor(msg, 5, 4, 240)
 }
 
 func handleKeyEvent(ev termbox.Event) bool {
@@ -353,42 +443,63 @@ func handleKeyEvent(ev termbox.Event) bool {
         case termbox.KeyEsc:
             return false
         case termbox.KeyArrowLeft:
+            if g.pstate != PLAYER_DEFAULT_STATE {
+                break
+            }
             g.KeepPrevBoard()
             if g.SlideLeft() {
                 g.PopNewTile()
             }
             g.Draw()
         case termbox.KeyArrowRight:
+            if g.pstate != PLAYER_DEFAULT_STATE {
+                break
+            }
             g.KeepPrevBoard()
             if g.SlideRight() {
                 g.PopNewTile()
             }
             g.Draw()
         case termbox.KeyArrowUp:
+            if g.pstate != PLAYER_DEFAULT_STATE {
+                break
+            }
             g.KeepPrevBoard()
             if g.SlideUp() {
                 g.PopNewTile()
             }
             g.Draw()
         case termbox.KeyArrowDown:
+            if g.pstate != PLAYER_DEFAULT_STATE {
+                break
+            }
             g.KeepPrevBoard()
             if g.SlideDown() {
                 g.PopNewTile()
             }
             g.Draw()
         case termbox.KeyPgup:
+            if g.pstate != PLAYER_DEFAULT_STATE {
+                break
+            }
             g.Undo()
             g.Draw()
         case termbox.KeyPgdn:
+            if g.pstate != PLAYER_DEFAULT_STATE {
+                break
+            }
             g.Redo()
+            g.Draw()
+        case termbox.KeySpace:
+            g = NewGameBoard(g.size)
             g.Draw()
         default:
             g.Draw()
         }
-        if g.CheckGameEnd() {
-            return false
-        }
     default:
+        g.Draw()
+    }
+    if g.CheckGameEnd() {
         g.Draw()
     }
     return true
@@ -413,23 +524,16 @@ func main() {
             evc <-termbox.PollEvent()
         }
     }()
-
     g.Draw()
-GAME_MAINLOOP:
     for {
         select {
         case ev := <-evc:
             if !handleKeyEvent(ev) {
-                break GAME_MAINLOOP
+                return
             }
             g.Draw()
         case <-time.After(1*time.Second):
             g.Draw()
         }
-    }
-    if g.pstate == WIN {
-        g.Win()
-    } else {
-        g.Lose()
     }
 }
