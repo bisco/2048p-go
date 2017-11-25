@@ -147,15 +147,15 @@ func TestSlideTileRight(t *testing.T) {
         }
     }
     clearBoard()
-    start := [4][4]int{{ 2,  2, -1, -1},
-                       {-1, -1,  4, -1},
-                       {-1,  2, -1,  2},
+    start := [4][4]int{{ 4,  2,  2, -1},
+                       { 2,  2,  8, -1},
+                       { 2,  2, -1,  2},
                        { 4, -1,  2, -1},
                       }
-    ans := [4][4]int{{-1, -1, -1,  4},
-                     {-1, -1, -1,  4},
-                     {-1, -1, -1,  4},
-                     {-1, -1, 4,  2},
+    ans := [4][4]int{{-1, -1,  4,  4},
+                     {-1, -1,  4,  8},
+                     {-1, -1,  2,  4},
+                     {-1, -1,  4,  2},
                     }
     for i, row := range start {
         for j, v := range row {
@@ -172,5 +172,51 @@ func TestSlideTileRight(t *testing.T) {
                 fmt.Printf("(%d, %d) has %d, but expected %d\n", i, j, g.board[i][j], v)
             }
         }
+    }
+}
+
+func TestLoseCheck(t *testing.T) {
+    size := 4
+    g := NewGameBoard(size)
+    clearBoard := func() {
+        for i, row := range g.board {
+            for j, _ := range row {
+                g.board[i][j] = -1
+            }
+        }
+    }
+    clearBoard()
+    g.board = [][]int{{  4,  2,    4,   2},
+                      {  8, 16,  128,   8},
+                      {512,128, 1024,  32},
+                      {  4,  8,  256, 128}}
+    if g.CheckGameEnd() {
+        t.Error("End check")
+    }
+    if g.pstate != LOSE {
+        t.Error("Result check")
+    }
+}
+
+func TestContinueCheck(t *testing.T) {
+    size := 4
+    g := NewGameBoard(size)
+    clearBoard := func() {
+        for i, row := range g.board {
+            for j, _ := range row {
+                g.board[i][j] = -1
+            }
+        }
+    }
+    clearBoard()
+    g.board = [][]int{{  4,  2,    4,   2},
+                      {  4, 16,  128,   8},
+                      {512,128, 1024,  32},
+                      {  4,  8,  256, 128}}
+    if !g.CheckGameEnd() {
+        t.Error("End check")
+    }
+    if g.pstate == LOSE {
+        t.Error("Result check")
     }
 }
