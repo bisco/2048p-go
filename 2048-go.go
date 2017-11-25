@@ -143,6 +143,7 @@ func (g *GameBoard) PrintBoard(offset int) int {
     } else if g.pstate == LOSE {
         g.Lose()
     }
+    lineCount++
     return lineCount
 }
 
@@ -372,6 +373,7 @@ func (g *GameBoard) canSlideLeftAll() bool {
     for i := 0; i < g.size; i++ {
         for j := 0; j < g.size; j++ {
             if g.canSlideRight(i, j, g.size) {
+                g.mirrorLR()
                 return true
             }
         }
