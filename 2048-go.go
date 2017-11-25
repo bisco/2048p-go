@@ -31,6 +31,7 @@ type GameBoard struct {
     score int
     prevscore int
     highscore int
+    prevhighscore int
     bstate BoardState
     pstate PlayerState
 }
@@ -49,6 +50,9 @@ func genSquareSlice(size, inival int) [][]int {
 func GetTileColor(v int) [2]termbox.Attribute {
     var color [2]termbox.Attribute
     switch v {
+    case 0:
+        color[0] = termbox.Attribute(0)
+        color[1] = termbox.Attribute(2)
     case 2:
         color[0] = termbox.Attribute(232)
         color[1] = termbox.Attribute(23)
@@ -113,19 +117,21 @@ func (g *GameBoard) PrintBoard(offset int) int {
     lineCount := 0
     drawline(offset)
     lineCount++ 
+    var str string
     for i, row := range g.board {
         y := i * 2 + offset
         for j, v := range row {
             termbox.SetCell(j*5, y+1, '|', termbox.ColorDefault, termbox.ColorDefault)
-            if v != -1 {
-                color := GetTileColor(v)
-                for k, r := range []rune(fmt.Sprintf("%4d", v)) {
-                    termbox.SetCell(j*5+1+k, y+1, r, color[0], color[1])
-                }
+            color := GetTileColor(v)
+            if v == 0 {
+                str = "   P"
+            } else if v > 0 {
+                str = fmt.Sprintf("%4d", v)
             } else {
-                for k, r := range []rune(fmt.Sprintf("    ")) {
-                    termbox.SetCell(j*5+1+k, y+1, r, termbox.ColorDefault, termbox.ColorDefault)
-                }
+                str = "    "
+            }
+            for k, r := range []rune(str) {
+                termbox.SetCell(j*5+1+k, y+1, r, color[0], color[1])
             }
         }
         termbox.SetCell((g.size+1)*4, y+1, '|', termbox.ColorDefault, termbox.ColorDefault)
@@ -163,6 +169,7 @@ func PrintUsage(offset int) int {
     usage := []string{
                 "Slide tiles with arrow keys. If the two tiles are the same, ",
                 "they merge into one and its number becomes double.",
+                "If you merge 'P' tile, the neighbors become double.",
                 "GOAL: generate a '2048' tile.",
                 "ESC: Exit the game / SPACE: Reset the game / PgDn: Undo / PgUp: Redo",
     }
@@ -191,6 +198,7 @@ func (g *GameBoard) KeepPrevBoard() {
         }
     }
     g.prevscore = g.score
+    g.prevhighscore = g.highscore
 }
 
 func (g *GameBoard) swapBoard() {
@@ -199,6 +207,8 @@ func (g *GameBoard) swapBoard() {
             g.prevBoard[i][j], g.board[i][j] = g.board[i][j], g.prevBoard[i][j]
         }
     }
+    g.score, g.prevscore = g.prevscore, g.score
+    g.highscore, g.prevhighscore = g.prevhighscore, g.highscore
 }
 
 func (g *GameBoard) mirrorLR() {
@@ -243,15 +253,58 @@ func (g *GameBoard) Redo() {
     }
 }
 
+func (g *GameBoard) clearPtile(x, y int) {
+    starty := y - 1
+    if starty < 0 {
+        starty = 0
+    }
+    startx := x - 1
+    if startx < 0 {
+        startx = 0
+    }
+    endy := y + 2
+    if endy > g.size {
+        endy = g.size
+    }
+    endx := x + 2
+    if endx > g.size {
+        endx = g.size
+    }
+    for i := starty; i < endy; i++ {
+        for j := startx; j < endx; j++ {
+            if g.board[i][j] > 1 {
+                g.board[i][j] *= 2
+                g.score += g.board[i][j]
+            }
+        }
+    }
+}
+
+func (g *GameBoard) ClearPtile() {
+    for y := 0; y < g.size; y++ {
+        for x := 0; x < g.size; x++ {
+            if g.board[y][x] == 1 {
+                g.board[y][x] = -1
+                g.clearPtile(x, y)
+            }
+        }
+    }
+}
+
+func (g *GameBoard) UpdateHighScore() {
+    if g.highscore < g.score {
+        g.prevhighscore = g.highscore
+        g.highscore = g.score
+    }
+}
+
 func (g *GameBoard) mergeTile(dstx, dsty, srcx, srcy int) {
     g.board[srcy][srcx] = -1
     g.board[dsty][dstx] *= 2
-    if g.board[dsty][dstx] == 2048 {
-        g.pstate = WIN
-    }
-    g.score += g.board[dsty][dstx]
-    if g.score > g.highscore {
-        g.highscore = g.score
+    if g.board[dsty][dstx] == 0 {
+        g.board[dsty][dstx] = 1
+    } else {
+        g.score += g.board[dsty][dstx]
     }
 }
 
@@ -275,7 +328,6 @@ func (g *GameBoard) _slideRight(x, y, limit int) int {
         if g.board[y][i] == -1 {
             continue
         } else if g.board[y][i] == g.board[y][x] {
-            //g.mergeTile(y, i, y, x)
             g.mergeTile(i, y, x, y)
             return i
         } else {
@@ -314,10 +366,13 @@ func (g *GameBoard) PopNewTile(){
         x := rand.Intn(g.size)
         y := rand.Intn(g.size)
         if g.board[x][y] == -1 {
-            if rand.Intn(100) < 90 {
+            p := rand.Intn(100)
+            if p < 90 {
                 g.board[x][y] = 2
-            } else {
+            } else if p >= 90 && p < 99 {
                 g.board[x][y] = 4
+            } else {
+                g.board[x][y] = 0 // special tile
             }
             break
         }
@@ -407,14 +462,19 @@ func (g *GameBoard) SlideLeft() bool {
 }
 
 func (g *GameBoard) CheckGameEnd() bool {
-     if g.pstate == WIN {
-        return true
-     }
-     if g.IsSlidable() {
-        return true
-     }
-     g.pstate = LOSE
-     return false
+    for y := 0; y < g.size; y++ {
+        for x := 0; x < g.size; x++ {
+            if g.board[y][x] == 2048 {
+                g.pstate = WIN
+                return true
+            }
+        }
+    }
+    if g.IsSlidable() {
+       return true
+    }
+    g.pstate = LOSE
+    return false
 }
 
 func (g *GameBoard) Win() {
@@ -434,6 +494,7 @@ func (g *GameBoard) Lose() {
 }
 
 func handleKeyEvent(ev termbox.Event) bool {
+    moved := false
     switch ev.Type {
     case termbox.EventKey:
         switch ev.Key {
@@ -444,63 +505,52 @@ func handleKeyEvent(ev termbox.Event) bool {
                 break
             }
             g.KeepPrevBoard()
-            if g.SlideLeft() {
-                g.PopNewTile()
-            }
-            g.Draw()
+            moved = g.SlideLeft()
         case termbox.KeyArrowRight:
             if g.pstate != PLAYER_DEFAULT_STATE {
                 break
             }
             g.KeepPrevBoard()
-            if g.SlideRight() {
-                g.PopNewTile()
-            }
-            g.Draw()
+            moved = g.SlideRight()
         case termbox.KeyArrowUp:
             if g.pstate != PLAYER_DEFAULT_STATE {
                 break
             }
             g.KeepPrevBoard()
-            if g.SlideUp() {
-                g.PopNewTile()
-            }
-            g.Draw()
+            moved = g.SlideUp()
         case termbox.KeyArrowDown:
             if g.pstate != PLAYER_DEFAULT_STATE {
                 break
             }
             g.KeepPrevBoard()
-            if g.SlideDown() {
-                g.PopNewTile()
-            }
-            g.Draw()
+            moved = g.SlideDown()
         case termbox.KeyPgup:
             if g.pstate != PLAYER_DEFAULT_STATE {
                 break
             }
             g.Undo()
-            g.Draw()
         case termbox.KeyPgdn:
             if g.pstate != PLAYER_DEFAULT_STATE {
                 break
             }
             g.Redo()
-            g.Draw()
         case termbox.KeySpace:
             highscore := g.highscore
             g = NewGameBoard(g.size)
             g.highscore = highscore
-            g.Draw()
         default:
             g.Draw()
         }
     default:
         g.Draw()
     }
-    if g.CheckGameEnd() {
-        g.Draw()
+    g.ClearPtile()
+    g.UpdateHighScore()
+    if moved {
+        g.PopNewTile()
     }
+    g.CheckGameEnd()
+    g.Draw()
     return true
 }
 

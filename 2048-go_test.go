@@ -13,8 +13,8 @@ func TestMakingBoard(t *testing.T) {
     }
     for _, row := range g.board {
         for _, v := range row {
-            if !(v == 2 || v == -1) {
-                t.Error("Initial value should be 2 or -1(as an invalid number)")
+            if !(v == 4 || v == 2 || v == -1 || v == 0) {
+                t.Error("Initial value should be 2 or 0 or -1 (as an invalid number)")
             }
         }
     }
@@ -218,5 +218,59 @@ func TestContinueCheck(t *testing.T) {
     }
     if g.pstate == LOSE {
         t.Error("Result check")
+    }
+}
+
+func TestPtileSlide(t *testing.T) {
+    size := 4
+    g := NewGameBoard(size)
+    clearBoard := func() {
+        for i, row := range g.board {
+            for j, _ := range row {
+                g.board[i][j] = -1
+            }
+        }
+    }
+    clearBoard()
+    g.board = [][]int{{ -1,  4,  2,  32},
+                      { -1,  2,  0,   0},
+                      { -1, -1,  4,  32},
+                      { -1, -1, -1,   4}}
+    mid :=  [4][4]int{{-1,  4,  2, 32},
+                      {-1, -1,  2,  1},
+                      {-1, -1,  4, 32},
+                      {-1, -1, -1,  4}}
+    ans :=  [4][4]int{{-1,  4,  4, 64},
+                      {-1, -1,  4, -1},
+                      {-1, -1,  8, 64},
+                      {-1, -1, -1,  4}}
+    if !g.CheckGameEnd() {
+        t.Error("End check")
+    }
+    if g.pstate == LOSE {
+        t.Error("Result check")
+    }
+    if !g.SlideRight() {
+        t.Error("Slide Check")
+    }
+    for i, row := range mid {
+        for j, v := range row {
+            if g.board[i][j] != v {
+                t.Error("merge miss at mid")
+                fmt.Printf("(%d, %d) has %d, but expected %d\n", i, j, g.board[i][j], v)
+            }
+        }
+    }
+    g.ClearPtile()
+    for i, row := range ans {
+        for j, v := range row {
+            if g.board[i][j] != v {
+                t.Error("clear miss")
+                fmt.Printf("(%d, %d) has %d, but expected %d\n", i, j, g.board[i][j], v)
+            }
+        }
+    }
+    if !g.CheckGameEnd() {
+        t.Error("End check after merging tiles")
     }
 }
