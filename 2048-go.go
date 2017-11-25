@@ -249,7 +249,7 @@ func (g *GameBoard) Redo() {
     }
 }
 
-func (g *GameBoard) mergeTile(dsty, dstx, srcy, srcx int) {
+func (g *GameBoard) mergeTile(dstx, dsty, srcx, srcy int) {
     g.board[srcy][srcx] = -1
     g.board[dsty][dstx] *= 2
     if g.board[dsty][dstx] == 2048 {
@@ -261,7 +261,7 @@ func (g *GameBoard) mergeTile(dsty, dstx, srcy, srcx int) {
     }
 }
 
-func (g *GameBoard) canSlideRight(y, x, limit int) bool {
+func (g *GameBoard) canSlideRight(x, y, limit int) bool {
     if x == g.size - 1 {
         return false
     }
@@ -276,12 +276,13 @@ func (g *GameBoard) canSlideRight(y, x, limit int) bool {
     return false
 }
 
-func (g *GameBoard) _slideRight(y, x, limit int) int {
+func (g *GameBoard) _slideRight(x, y, limit int) int {
     for i := x + 1; i < limit; i++ {
         if g.board[y][i] == -1 {
             continue
         } else if g.board[y][i] == g.board[y][x] {
-            g.mergeTile(y, i, y, x)
+            //g.mergeTile(y, i, y, x)
+            g.mergeTile(i, y, x, y)
             return i
         } else {
             g.board[y][i-1] = g.board[y][x]
@@ -299,13 +300,13 @@ func (g *GameBoard) _slideRight(y, x, limit int) int {
 func (g *GameBoard) SlideRight() bool {
     moved := false
     limit := g.size
-    for i, row := range g.board {
-        for j := g.size - 1; j >= 0; j-- {
-            if row[j] == -1 {
+    for y, row := range g.board {
+        for x := g.size - 1; x >= 0; x-- {
+            if row[x] == -1 {
                 continue
             }
-            if g.canSlideRight(i, j, limit) {
-                limit = g._slideRight(i, j, limit)
+            if g.canSlideRight(x, y, limit) {
+                limit = g._slideRight(x, y, limit)
                 moved = true
             }
         }
@@ -332,7 +333,7 @@ func (g *GameBoard) PopNewTile(){
 func (g *GameBoard) canSlideRightAll() bool {
     for i := 0; i < g.size; i++ {
         for j := 0; j < g.size; j++ {
-            if g.canSlideRight(i, j, g.size) {
+            if g.canSlideRight(j, i, g.size) {
                 return true
             }
         }
@@ -344,7 +345,7 @@ func (g *GameBoard) canSlideUpAll() bool {
     g.rrot90()
     for i := 0; i < g.size; i++ {
         for j := 0; j < g.size; j++ {
-            if g.canSlideRight(i, j, g.size) {
+            if g.canSlideRight(j, i, g.size) {
                 g.lrot90()
                 return true
             }
@@ -358,7 +359,7 @@ func (g *GameBoard) canSlideDownAll() bool {
     g.lrot90()
     for i := 0; i < g.size; i++ {
         for j := 0; j < g.size; j++ {
-            if g.canSlideRight(i, j, g.size) {
+            if g.canSlideRight(j, i, g.size) {
                 g.rrot90()
                 return true
             }
@@ -372,7 +373,7 @@ func (g *GameBoard) canSlideLeftAll() bool {
     g.mirrorLR()
     for i := 0; i < g.size; i++ {
         for j := 0; j < g.size; j++ {
-            if g.canSlideRight(i, j, g.size) {
+            if g.canSlideRight(j, i, g.size) {
                 g.mirrorLR()
                 return true
             }
@@ -493,7 +494,9 @@ func handleKeyEvent(ev termbox.Event) bool {
             g.Redo()
             g.Draw()
         case termbox.KeySpace:
+            highscore := g.highscore
             g = NewGameBoard(g.size)
+            g.highscore = highscore
             g.Draw()
         default:
             g.Draw()
