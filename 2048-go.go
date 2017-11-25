@@ -95,14 +95,8 @@ func NewGameBoard(size int) *GameBoard {
     g.board = genSquareSlice(size, -1)
     g.prevBoard = genSquareSlice(size, -1)
     rand.Seed(time.Now().UTC().UnixNano())
-    x1 := rand.Intn(g.size)
-    y1 := rand.Intn(g.size)
-    x2 := rand.Intn(g.size)
-    y2 := rand.Intn(g.size)
-    if x1 != x2 || y1 != y2 {
-        g.board[x1][y1] = 2
-        g.board[x2][y2] = 2
-    }
+    g.PopNewTile()
+    g.PopNewTile()
     g.bstate = BOARD_INIT_STATE
     g.pstate = PLAYER_DEFAULT_STATE
     g.score = 0
