@@ -2,11 +2,13 @@ package main
 
 import (
 	"fmt"
-	"github.com/nsf/termbox-go"
 	"math/rand"
 	"os"
+	"runtime"
 	"strings"
 	"time"
+
+	"github.com/nsf/termbox-go"
 )
 
 type BoardState uint
@@ -50,6 +52,9 @@ func genSquareSlice(size, inival int) [][]int {
 
 func GetTileColor(v int) [2]termbox.Attribute {
 	var color [2]termbox.Attribute
+    if runtime.GOOS == "windows" {
+        v = -1
+    }
 	switch v {
 	case 0:
 		color[0] = termbox.Attribute(0)
