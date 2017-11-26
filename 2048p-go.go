@@ -52,9 +52,9 @@ func genSquareSlice(size, inival int) [][]int {
 
 func GetTileColor(v int) [2]termbox.Attribute {
 	var color [2]termbox.Attribute
-    if runtime.GOOS == "windows" {
-        v = -1
-    }
+	if runtime.GOOS == "windows" {
+		v = -1
+	}
 	switch v {
 	case 0:
 		color[0] = termbox.Attribute(0)
@@ -216,6 +216,56 @@ func (g *GameBoard) swapBoard() {
 	g.highscore, g.prevhighscore = g.prevhighscore, g.highscore
 }
 
+func (g *GameBoard) Undo() {
+	if g.bstate == UNDO_OK {
+		g.swapBoard()
+		g.bstate = REDO_OK
+	}
+}
+
+func (g *GameBoard) Redo() {
+	if g.bstate == REDO_OK {
+		g.swapBoard()
+		g.bstate = UNDO_OK
+	}
+}
+
+func (g *GameBoard) mergeTile(dstx, dsty, srcx, srcy int) {
+	g.board[srcy][srcx] = -1
+	g.board[dsty][dstx] *= 2
+	if g.board[dsty][dstx] == 0 {
+		g.board[dsty][dstx] = 1
+	} else {
+		g.score += g.board[dsty][dstx]
+	}
+}
+
+func (g *GameBoard) canSlideRight(x, y, limit int) bool {
+	if x == g.size-1 {
+		return false
+	}
+	if g.board[y][x] == g.board[y][x+1] {
+		return true
+	}
+	for i := x + 1; i < limit; i++ {
+		if g.board[y][i] == -1 {
+			return true
+		}
+	}
+	return false
+}
+
+func (g *GameBoard) canSlideRightAll() bool {
+	for i := 0; i < g.size; i++ {
+		for j := 0; j < g.size; j++ {
+			if g.canSlideRight(j, i, g.size) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func (g *GameBoard) mirrorLR() {
 	for i := 0; i < g.size; i++ {
 		for j := 0; j < g.size/2; j++ {
@@ -244,17 +294,130 @@ func (g *GameBoard) lrot90() {
 	g.board = board
 }
 
-func (g *GameBoard) Undo() {
-	if g.bstate == UNDO_OK {
-		g.swapBoard()
-		g.bstate = REDO_OK
+func (g *GameBoard) canSlideLeftAll() bool {
+	g.mirrorLR()
+	for i := 0; i < g.size; i++ {
+		for j := 0; j < g.size; j++ {
+			if g.canSlideRight(j, i, g.size) {
+				g.mirrorLR()
+				return true
+			}
+		}
 	}
+	g.mirrorLR()
+	return false
 }
 
-func (g *GameBoard) Redo() {
-	if g.bstate == REDO_OK {
-		g.swapBoard()
-		g.bstate = UNDO_OK
+func (g *GameBoard) canSlideUpAll() bool {
+	g.rrot90()
+	for i := 0; i < g.size; i++ {
+		for j := 0; j < g.size; j++ {
+			if g.canSlideRight(j, i, g.size) {
+				g.lrot90()
+				return true
+			}
+		}
+	}
+	g.lrot90()
+	return false
+}
+
+func (g *GameBoard) canSlideDownAll() bool {
+	g.lrot90()
+	for i := 0; i < g.size; i++ {
+		for j := 0; j < g.size; j++ {
+			if g.canSlideRight(j, i, g.size) {
+				g.rrot90()
+				return true
+			}
+		}
+	}
+	g.rrot90()
+	return false
+}
+
+func (g *GameBoard) IsSlidable() bool {
+	ret := g.canSlideRightAll()
+	ret = ret || g.canSlideLeftAll()
+	ret = ret || g.canSlideUpAll()
+	ret = ret || g.canSlideDownAll()
+	return ret
+}
+
+func (g *GameBoard) _slideRight(x, y, limit int) int {
+	for i := x + 1; i < limit; i++ {
+		if g.board[y][i] == -1 {
+			continue
+		} else if g.board[y][i] == g.board[y][x] {
+			g.mergeTile(i, y, x, y)
+			return i
+		} else {
+			g.board[y][i-1] = g.board[y][x]
+			if !(i == 1 && x == 0) {
+				g.board[y][x] = -1
+			}
+			return i
+		}
+	}
+	g.board[y][limit-1] = g.board[y][x]
+	g.board[y][x] = -1
+	return limit
+}
+
+func (g *GameBoard) SlideRight() bool {
+	moved := false
+	limit := g.size
+	for y, row := range g.board {
+		for x := g.size - 1; x >= 0; x-- {
+			if row[x] == -1 {
+				continue
+			}
+			if g.canSlideRight(x, y, limit) {
+				limit = g._slideRight(x, y, limit)
+				moved = true
+			}
+		}
+		limit = g.size
+	}
+	return moved
+}
+
+func (g *GameBoard) SlideUp() bool {
+	g.rrot90()
+	ret := g.SlideRight()
+	g.lrot90()
+	return ret
+}
+
+func (g *GameBoard) SlideDown() bool {
+	g.lrot90()
+	ret := g.SlideRight()
+	g.rrot90()
+	return ret
+}
+
+func (g *GameBoard) SlideLeft() bool {
+	g.mirrorLR()
+	ret := g.SlideRight()
+	g.mirrorLR()
+	return ret
+}
+
+func (g *GameBoard) PopNewTile() {
+	for {
+		x := rand.Intn(g.size)
+		y := rand.Intn(g.size)
+		if g.board[x][y] == -1 {
+			p := rand.Intn(100)
+			if p < 90 {
+				g.board[x][y] = 2
+			} else if p >= 90 && p < 99 {
+				g.board[x][y] = 4
+			} else {
+				g.board[x][y] = 0 // special tile
+			}
+			break
+		}
 	}
 }
 
@@ -301,169 +464,6 @@ func (g *GameBoard) UpdateHighScore() {
 		g.prevhighscore = g.highscore
 		g.highscore = g.score
 	}
-}
-
-func (g *GameBoard) mergeTile(dstx, dsty, srcx, srcy int) {
-	g.board[srcy][srcx] = -1
-	g.board[dsty][dstx] *= 2
-	if g.board[dsty][dstx] == 0 {
-		g.board[dsty][dstx] = 1
-	} else {
-		g.score += g.board[dsty][dstx]
-	}
-}
-
-func (g *GameBoard) canSlideRight(x, y, limit int) bool {
-	if x == g.size-1 {
-		return false
-	}
-	if g.board[y][x] == g.board[y][x+1] {
-		return true
-	}
-	for i := x + 1; i < limit; i++ {
-		if g.board[y][i] == -1 {
-			return true
-		}
-	}
-	return false
-}
-
-func (g *GameBoard) _slideRight(x, y, limit int) int {
-	for i := x + 1; i < limit; i++ {
-		if g.board[y][i] == -1 {
-			continue
-		} else if g.board[y][i] == g.board[y][x] {
-			g.mergeTile(i, y, x, y)
-			return i
-		} else {
-			g.board[y][i-1] = g.board[y][x]
-			if !(i == 1 && x == 0) {
-				g.board[y][x] = -1
-			}
-			return i
-		}
-	}
-	g.board[y][limit-1] = g.board[y][x]
-	g.board[y][x] = -1
-	return limit
-}
-
-func (g *GameBoard) SlideRight() bool {
-	moved := false
-	limit := g.size
-	for y, row := range g.board {
-		for x := g.size - 1; x >= 0; x-- {
-			if row[x] == -1 {
-				continue
-			}
-			if g.canSlideRight(x, y, limit) {
-				limit = g._slideRight(x, y, limit)
-				moved = true
-			}
-		}
-		limit = g.size
-	}
-	return moved
-}
-
-func (g *GameBoard) PopNewTile() {
-	for {
-		x := rand.Intn(g.size)
-		y := rand.Intn(g.size)
-		if g.board[x][y] == -1 {
-			p := rand.Intn(100)
-			if p < 90 {
-				g.board[x][y] = 2
-			} else if p >= 90 && p < 99 {
-				g.board[x][y] = 4
-			} else {
-				g.board[x][y] = 0 // special tile
-			}
-			break
-		}
-	}
-}
-
-func (g *GameBoard) canSlideRightAll() bool {
-	for i := 0; i < g.size; i++ {
-		for j := 0; j < g.size; j++ {
-			if g.canSlideRight(j, i, g.size) {
-				return true
-			}
-		}
-	}
-	return false
-}
-
-func (g *GameBoard) canSlideUpAll() bool {
-	g.rrot90()
-	for i := 0; i < g.size; i++ {
-		for j := 0; j < g.size; j++ {
-			if g.canSlideRight(j, i, g.size) {
-				g.lrot90()
-				return true
-			}
-		}
-	}
-	g.lrot90()
-	return false
-}
-
-func (g *GameBoard) canSlideDownAll() bool {
-	g.lrot90()
-	for i := 0; i < g.size; i++ {
-		for j := 0; j < g.size; j++ {
-			if g.canSlideRight(j, i, g.size) {
-				g.rrot90()
-				return true
-			}
-		}
-	}
-	g.rrot90()
-	return false
-}
-
-func (g *GameBoard) canSlideLeftAll() bool {
-	g.mirrorLR()
-	for i := 0; i < g.size; i++ {
-		for j := 0; j < g.size; j++ {
-			if g.canSlideRight(j, i, g.size) {
-				g.mirrorLR()
-				return true
-			}
-		}
-	}
-	g.mirrorLR()
-	return false
-}
-
-func (g *GameBoard) IsSlidable() bool {
-	ret := g.canSlideRightAll()
-	ret = ret || g.canSlideLeftAll()
-	ret = ret || g.canSlideUpAll()
-	ret = ret || g.canSlideDownAll()
-	return ret
-}
-
-func (g *GameBoard) SlideUp() bool {
-	g.rrot90()
-	ret := g.SlideRight()
-	g.lrot90()
-	return ret
-}
-
-func (g *GameBoard) SlideDown() bool {
-	g.lrot90()
-	ret := g.SlideRight()
-	g.rrot90()
-	return ret
-}
-
-func (g *GameBoard) SlideLeft() bool {
-	g.mirrorLR()
-	ret := g.SlideRight()
-	g.mirrorLR()
-	return ret
 }
 
 func (g *GameBoard) CheckGameEnd() bool {
